@@ -1,0 +1,27 @@
+{
+  "sparkline": true,
+  "metrics": [
+    [ "Benchmark/GoSDKv1", "MarshalMap", "OS", "linux", "Size", "1KB", "Arch", "arm64", "SDK", "aws-sdk-go", { "id": "m1" } ],
+    [ ".", "UnmarshalMap", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m2" } ],
+    [ "Benchmark/GoSDKv2", ".", ".", ".", ".", ".", ".", ".", ".", "aws-sdk-go-v2", { "id": "m3" } ],
+    [ "Benchmark/GoSDKv2CodeGen", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m4" } ],
+    [ "Benchmark/GoSDKv2Ptr", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m5" } ],
+    [ "Benchmark/GoSDKv2", "MarshalMap", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m6" } ],
+    [ "Benchmark/GoSDKv2CodeGen", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m7" } ],
+    [ "Benchmark/GoSDKv2Ptr", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m8" } ],
+    [ "Benchmark/GoSDKv2", ".", ".", ".", ".", ".", ".", "amd64", ".", ".", { "id": "m9" } ],
+    [ "Benchmark/GoSDKv2CodeGen", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m10" } ],
+    [ "Benchmark/GoSDKv2Ptr", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m11" } ],
+    [ "Benchmark/GoSDKv2", "UnmarshalMap", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m12" } ],
+    [ "Benchmark/GoSDKv2CodeGen", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m13" } ],
+    [ "Benchmark/GoSDKv2Ptr", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m14" } ],
+    [ "Benchmark/GoSDKv1", "MarshalMap", ".", ".", ".", ".", ".", ".", ".", "aws-sdk-go", { "id": "m15" } ],
+    [ ".", "UnmarshalMap", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m16" } ]
+  ],
+  "view": "table",
+  "stacked": false,
+  "region": "eu-west-1",
+  "liveData": true,
+  "period": 300,
+  "stat": "Average"
+}
