@@ -1,0 +1,44 @@
+go: downloading github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.3
+go: downloading github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.39
+go: downloading github.com/aws/smithy-go v1.25.1
+go: downloading github.com/aws/aws-sdk-go-v2 v1.41.7
+go: downloading github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.23
+go: downloading github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.16
+go: downloading github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23
+?   	main	[no test files]
+goos: linux
+goarch: amd64
+pkg: main/benchmarks
+cpu: Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz
+Benchmark_DynamodbAttribute_MarshalMap_User1KB-64        	 4095591	     17475 ns/op	   18995 B/op	     183 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User1KB-64      	 9068995	      7932 ns/op	    2806 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User10KB-64       	 3210764	     22428 ns/op	   23349 B/op	     230 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User10KB-64     	 6961704	     10341 ns/op	    3223 B/op	      40 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User100KB-64      	 3521887	     20454 ns/op	   20920 B/op	     209 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User100KB-64    	 7350213	      9802 ns/op	    3095 B/op	      39 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User300KB-64      	 3925430	     18407 ns/op	   19035 B/op	     192 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User300KB-64    	 8250238	      8714 ns/op	    2879 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_String-64         	23052846	      3120 ns/op	    2968 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_String-64       	32138469	      2243 ns/op	     544 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int-64            	23759668	      3027 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int-64          	31782276	      2265 ns/op	     464 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int8-64           	23525482	      3051 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int8-64         	32592294	      2209 ns/op	     408 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int16-64          	23257741	      3093 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int16-64        	32189560	      2238 ns/op	     416 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int32-64          	23261688	      3096 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int32-64        	32030010	      2252 ns/op	     432 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int64-64          	23220446	      3098 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int64-64        	31766899	      2266 ns/op	     464 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint-64           	23612018	      3060 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint-64         	32557360	      2215 ns/op	     464 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint8-64          	23174504	      3098 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint8-64        	34860645	      2067 ns/op	     408 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint16-64         	23004469	      3130 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint16-64       	33542721	      2148 ns/op	     416 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint32-64         	23124612	      3126 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint32-64       	33136720	      2174 ns/op	     432 B/op	      23 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint64-64         	23023840	      3132 ns/op	    2952 B/op	      30 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint64-64       	32410328	      2221 ns/op	     464 B/op	      23 allocs/op
+PASS
+ok  	main/benchmarks	2160.232s

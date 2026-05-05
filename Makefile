@@ -56,3 +56,14 @@ $(APPS): ensure-gvm
 # Recommended -j16 or higher for running all apps in parallel, depending on your CPU cores
 .PHONY: all-sizes
 all-sizes: $(ALL_SIZE_TARGETS)
+
+# Benchmark each app
+.PHONY: gobm
+gobm: ensure-gvm
+	TIMESTAMP=$$(date +%Y_%m_%d_%H_%M_%S); \
+	ARCH=$$(go env GOARCH); \
+	for app in $(APPS); do \
+		echo "Benchmarking $$app..."; \
+		cd apps/$$app && go test -bench=. -benchmem -benchtime=60s -run=notest -count=1 ./... > "../../results/$${app}_bench_$${TIMESTAMP}_$${ARCH}.txt" 2>&1; \
+		cd ../..; \
+	done

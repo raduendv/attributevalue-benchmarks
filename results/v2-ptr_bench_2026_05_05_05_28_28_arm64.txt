@@ -1,0 +1,72 @@
+?   	main	[no test files]
+goos: linux
+goarch: arm64
+pkg: main/benchmarks
+Benchmark_DynamodbAttribute_MarshalMap_User1KB-64        	 8837276	      8150 ns/op	    3480 B/op	      43 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User1KB-64      	23362941	      3078 ns/op	     976 B/op	       6 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User10KB-64       	 8804198	      8177 ns/op	    3480 B/op	      43 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User10KB-64     	23616325	      3046 ns/op	     976 B/op	       6 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User100KB-64      	 8763224	      8205 ns/op	    3480 B/op	      43 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User100KB-64    	23084493	      3117 ns/op	     976 B/op	       6 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User300KB-64      	 8852571	      8146 ns/op	    3480 B/op	      43 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User300KB-64    	23551762	      3058 ns/op	     976 B/op	       6 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_String-64         	18061003	      3988 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_String-64       	28791500	      2502 ns/op	     832 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int-64            	17779484	      4052 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int-64          	26315178	      2738 ns/op	     752 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int8-64           	17755120	      4055 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int8-64         	27069561	      2663 ns/op	     696 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int16-64          	17609350	      4089 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int16-64        	27391354	      2624 ns/op	     704 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int32-64          	17635294	      4084 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int32-64        	27094358	      2663 ns/op	     720 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int64-64          	17567829	      4101 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int64-64        	26405311	      2725 ns/op	     752 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint-64           	17706864	      4067 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint-64         	26957781	      2673 ns/op	     752 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint8-64          	17602142	      4087 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint8-64        	28049277	      2570 ns/op	     696 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint16-64         	17576055	      4096 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint16-64       	28114032	      2562 ns/op	     704 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint32-64         	17588181	      4091 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint32-64       	27697512	      2596 ns/op	     720 B/op	      26 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint64-64         	17413262	      4126 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint64-64       	27014454	      2660 ns/op	     752 B/op	      26 allocs/op
+PASS
+ok  	main/benchmarks	2159.840s
+goos: linux
+goarch: arm64
+pkg: main/rav
+Benchmark_AttributeValue_Encode_StringStruct-64    	16580661	      4339 ns/op	    1504 B/op	      30 allocs/op
+Benchmark_RAV_Encode_StringStruct-64               	17693451	      4064 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_IntStruct-64       	16623585	      4340 ns/op	    1424 B/op	      30 allocs/op
+Benchmark_RAV_Encode_IntStruct-64                  	17695830	      4066 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Int8Struct-64      	16820137	      4284 ns/op	    1354 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Int8Struct-64                 	17578053	      4085 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Int16Struct-64     	16618099	      4336 ns/op	    1364 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Int16Struct-64                	17472008	      4117 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Int32Struct-64     	16459246	      4372 ns/op	    1384 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Int32Struct-64                	17506944	      4109 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Int64Struct-64     	16274991	      4425 ns/op	    1424 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Int64Struct-64                	17362888	      4145 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_UintStruct-64      	16420851	      4394 ns/op	    1424 B/op	      30 allocs/op
+Benchmark_RAV_Encode_UintStruct-64                 	17492101	      4115 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Uint8Struct-64     	16604799	      4332 ns/op	    1354 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Uint8Struct-64                	17511662	      4105 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Uint16Struct-64    	16428657	      4387 ns/op	    1364 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Uint16Struct-64               	17380585	      4150 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Uint32Struct-64    	16312140	      4415 ns/op	    1384 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Uint32Struct-64               	17422579	      4139 ns/op	    1456 B/op	      29 allocs/op
+Benchmark_AttributeValue_Encode_Uint64Struct-64    	16036521	      4488 ns/op	    1424 B/op	      30 allocs/op
+Benchmark_RAV_Encode_Uint64Struct-64               	17384542	      4140 ns/op	    1456 B/op	      29 allocs/op
+PASS
+ok  	main/rav	1583.983s
+goos: linux
+goarch: arm64
+pkg: main/rav/benchmarks
+BenchmarkRAVEncode-64    	1000000000	         4.079 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRAVDecode-64    	1000000000	         4.077 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAVEncode-64     	1000000000	         4.079 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAVDecode-64     	1000000000	         4.077 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	main/rav/benchmarks	16.320s

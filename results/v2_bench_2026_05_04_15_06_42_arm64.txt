@@ -1,0 +1,36 @@
+?   	main	[no test files]
+goos: linux
+goarch: arm64
+pkg: main/benchmarks
+Benchmark_DynamodbAttribute_MarshalMap_User1KB-64        	 2847783	     25267 ns/op	    8894 B/op	     160 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User1KB-64      	 3800650	     18940 ns/op	    2934 B/op	      36 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User10KB-64       	 3560599	     20208 ns/op	    7571 B/op	     122 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User10KB-64     	 4573428	     15747 ns/op	    2678 B/op	      37 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User100KB-64      	 2671888	     26937 ns/op	    9279 B/op	     174 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User100KB-64    	 3564616	     20211 ns/op	    3046 B/op	      37 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_User300KB-64      	 3229603	     22293 ns/op	    8068 B/op	     142 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_User300KB-64    	 4279432	     16816 ns/op	    2806 B/op	      35 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_String-64         	16496092	      4368 ns/op	    1568 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_String-64       	15928737	      4520 ns/op	     448 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int-64            	16682002	      4317 ns/op	    1488 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int-64          	16383982	      4395 ns/op	     368 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int8-64           	16661340	      4326 ns/op	    1432 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int8-64         	16646118	      4325 ns/op	     312 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int16-64          	16484775	      4364 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int16-64        	16520541	      4359 ns/op	     320 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int32-64          	16556193	      4343 ns/op	    1456 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int32-64        	16497709	      4362 ns/op	     336 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Int64-64          	16382749	      4403 ns/op	    1488 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Int64-64        	16116604	      4467 ns/op	     368 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint-64           	16492668	      4367 ns/op	    1488 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint-64         	16339129	      4405 ns/op	     368 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint8-64          	16633236	      4331 ns/op	    1432 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint8-64        	17623044	      4082 ns/op	     312 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint16-64         	16526197	      4356 ns/op	    1440 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint16-64       	16824848	      4281 ns/op	     320 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint32-64         	16466187	      4376 ns/op	    1456 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint32-64       	16705461	      4308 ns/op	     336 B/op	      24 allocs/op
+Benchmark_DynamodbAttribute_MarshalMap_Uint64-64         	16388887	      4397 ns/op	    1488 B/op	      28 allocs/op
+Benchmark_DynamodbAttribute_UnmarshalMap_Uint64-64       	16475571	      4373 ns/op	     368 B/op	      24 allocs/op
+PASS
+ok  	main/benchmarks	2160.131s
