@@ -1,5 +1,10 @@
 package util
 
+import (
+	"pkg/model"
+	"time"
+)
+
 func Pointer[T any](v T) *T {
 	return &v
 }
@@ -33,4 +38,19 @@ func Min[T numeric](a ...T) T {
 	}
 
 	return min
+}
+
+func CreateEvent(name string, value float64, ts time.Time, unit string) model.Event {
+	return model.Event{
+		API:            Pointer(name),
+		RawValue:       Pointer(value),
+		Type:           Pointer("AttributeValue"),
+		Service:        Pointer("DynamoDB"),
+		ClientID:       Pointer("v1"),
+		Timestamp:      (*model.MetricTime)(Pointer(ts)),
+		Version:        Pointer(1),
+		AttemptCount:   Pointer(1),
+		AttemptLatency: nil,
+		StandardUnit:   Pointer(unit),
+	}
 }

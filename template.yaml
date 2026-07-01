@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Deploy one arm64 and one amd64 EC2 instance for benchmark runs.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0bf793d12fb6c76e3
+    Description: Existing VPC where instances are launched.
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-05777f42e3c32f116
+    Description: Existing subnet where both instances are launched.
+
+  InstanceProfileArn:
+    Type: String
+    Default: arn:aws:iam::886436938615:instance-profile/EpoxyChronicleInstanceProfile
+    Description: Existing EC2 instance profile ARN.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: radu-dax
+    Description: Existing EC2 key pair name.
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-092785fb752ab49f0
+    Description: Existing security group for both instances.
+
+  Arm64AmiId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0c996cc8f34262a23
+    Description: AMI ID for arm64 instance (for example, latest Amazon Linux 2023 arm64 in this region).
+
+  Amd64AmiId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-052681037b74cfa91
+    Description: AMI ID for amd64 instance (for example, latest Amazon Linux 2023 x86_64 in this region).
+
+Resources:
+  Arm64Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: c6g.4xlarge
+      ImageId: !Ref Arm64AmiId
+      SubnetId: !Ref SubnetId
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      IamInstanceProfile: !Select [1, !Split ["/", !Ref InstanceProfileArn]]
+      Tags:
+        - Key: Name
+          Value: benchmark-arm64
+        - Key: Arch
+          Value: arm64
+
+  Amd64Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: c6i.4xlarge
+      ImageId: !Ref Amd64AmiId
+      SubnetId: !Ref SubnetId
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      IamInstanceProfile: !Select [1, !Split ["/", !Ref InstanceProfileArn]]
+      Tags:
+        - Key: Name
+          Value: benchmark-amd64
+        - Key: Arch
+          Value: amd64
+
+Outputs:
+  Arm64InstanceId:
+    Description: EC2 InstanceId for the arm64 host.
+    Value: !Ref Arm64Instance
+
+  Amd64InstanceId:
+    Description: EC2 InstanceId for the amd64 host.
+    Value: !Ref Amd64Instance
+
+  Arm64PublicIp:
+    Description: Public IP for the arm64 host.
+    Value: !GetAtt Arm64Instance.PublicIp
+
+  Amd64PublicIp:
+    Description: Public IP for the amd64 host.
+    Value: !GetAtt Amd64Instance.PublicIp

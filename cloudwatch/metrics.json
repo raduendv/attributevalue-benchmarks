@@ -1,7 +1,7 @@
 {
   "sparkline": true,
   "metrics": [
-    [ "Benchmark/GoSDKv1", "MarshalMap", "OS", "linux", "Size", "1KB", "Arch", "arm64", "SDK", "aws-sdk-go", { "id": "m1" } ],
+    [ "Benchmark/GoSDKv1", "MarshalMap", "OS", runtime.GOOS, "Size", "1KB", "Arch", "arm64", "SDK", "aws-sdk-go", { "id": "m1" } ],
     [ ".", "UnmarshalMap", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m2" } ],
     [ "Benchmark/GoSDKv2", ".", ".", ".", ".", ".", ".", ".", ".", "aws-sdk-go-v2", { "id": "m3" } ],
     [ "Benchmark/GoSDKv2CodeGen", ".", ".", ".", ".", ".", ".", ".", ".", ".", { "id": "m4" } ],

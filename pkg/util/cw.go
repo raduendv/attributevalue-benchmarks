@@ -135,9 +135,16 @@ func (s *CloudWatchSender[I, O]) Start(ctx context.Context, wg *sync.WaitGroup) 
 
 	var cancels []context.CancelFunc
 
+	// start the collectors
+	log.Println("CloudWatchSender starting collectors")
+	go CollectGCStats(ctx, s.Send)
+	go CollectMemoryStats(ctx, s.Send)
+	go CollectRuntimeStats(ctx, s.Send)
+	go CollectCPUStats(ctx, s.Send)
+
 	for {
 		select {
-		case <-time.After(time.Second / 10):
+		case <-time.After(time.Second):
 			c := len(s.Queue)
 			if c > 500 {
 				toStart := (c / 500) + 1 - len(cancels)
@@ -178,11 +185,13 @@ func makeInput[I PutMetricDataInput](ns string, dimensions []model.Dimension, ev
 		o.MetricData = make([]*v1.MetricDatum, 0, len(evts))
 		o.Namespace = Pointer(ns)
 		for _, evt := range evts {
-			var latency = float64(0)
+			var value = float64(0)
 			if evt.Latency != nil {
-				latency = float64(*evt.Latency)
+				value = float64(*evt.Latency)
 			} else if evt.AttemptLatency != nil {
-				latency = float64(*evt.AttemptLatency)
+				value = float64(*evt.AttemptLatency)
+			} else if evt.RawValue != nil {
+				value = float64(*evt.RawValue)
 			}
 
 			standardUnit := v1.StandardUnitMilliseconds
@@ -192,7 +201,7 @@ func makeInput[I PutMetricDataInput](ns string, dimensions []model.Dimension, ev
 
 			datum := &v1.MetricDatum{
 				MetricName: evt.API,
-				Value:      Pointer(latency),
+				Value:      Pointer(value),
 				Unit:       Pointer(standardUnit),
 				Dimensions: make([]*v1.Dimension, 0, len(dimensions)),
 				Timestamp:  (*time.Time)(evt.Timestamp),
@@ -227,6 +236,8 @@ func makeInput[I PutMetricDataInput](ns string, dimensions []model.Dimension, ev
 				latency = float64(*evt.Latency)
 			} else if evt.AttemptLatency != nil {
 				latency = float64(*evt.AttemptLatency)
+			} else if evt.RawValue != nil {
+				latency = *evt.RawValue
 			}
 
 			standardUnit := cwtypes.StandardUnitMilliseconds

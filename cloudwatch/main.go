@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"pkg/util"
+	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -85,6 +87,13 @@ var namespaceLabels = map[string]string{
 	"Benchmark/GoSDKv2Ptr":     "v2-ptr",
 }
 
+var tableVersionByNamespace = map[string]string{
+	"Benchmark/GoSDKv1":        "v1",
+	"Benchmark/GoSDKv2":        "v2",
+	"Benchmark/GoSDKv2CodeGen": "v2_codegen",
+	"Benchmark/GoSDKv2Ptr":     "v2_ptr",
+}
+
 var writeOperations = []string{
 	"PutItem",
 	"UpdateItem",
@@ -100,12 +109,13 @@ var readOperations = []string{
 	"TransactGetItems",
 }
 
+var metricsOS = resolveMetricsOS()
+
 func main() {
 	region := resolveRegion()
 	variables := dashboardVariables()
 	selectedStat := variableDefault(variables, "stat", "Average")
 	selectedPeriod := variableDefaultInt(variables, "period", 300)
-	selectedSize := variableDefault(variables, "size", "1KB")
 
 	namespaces := []string{
 		"Benchmark/GoSDKv1",
@@ -119,11 +129,12 @@ func main() {
 		Widgets:   []Widget{},
 	}
 
-	dashboard.Widgets = append(dashboard.Widgets, newArchHeaderWidgets(0, "arm64", namespaces, selectedSize, selectedPeriod, selectedStat, region)...)
-	dashboard.Widgets = append(dashboard.Widgets, newArchHeaderWidgets(12, "amd64", namespaces, selectedSize, selectedPeriod, selectedStat, region)...)
+	arm64Widgets, headerHeight := newArchHeaderWidgets(0, "arm64", namespaces, selectedPeriod, selectedStat, region)
+	amd64Widgets, _ := newArchHeaderWidgets(12, "amd64", namespaces, selectedPeriod, selectedStat, region)
+	dashboard.Widgets = append(dashboard.Widgets, arm64Widgets...)
+	dashboard.Widgets = append(dashboard.Widgets, amd64Widgets...)
 
-	// Operation overhead sections span both arch columns so we only render one title per operation.
-	y := 16
+	y := headerHeight
 	for _, api := range writeOperations {
 		md := fmt.Sprintf(
 			"### MarshalMap — %s\n"+
@@ -132,11 +143,15 @@ func main() {
 				"Each SDK widget shows: API call duration (ms for v1, µs for v2), MarshalMap duration (µs), and AttributeValue mapping overhead %%._",
 			api, api,
 		)
-		dashboard.Widgets = append(dashboard.Widgets, newSectionTitleWidget(0, y, md))
-		y += 3
-		dashboard.Widgets = append(dashboard.Widgets, newOperationOverheadWidgets(0, y, "arm64", "MarshalMap", api, namespaces, selectedSize, selectedPeriod, selectedStat, region)...)
-		dashboard.Widgets = append(dashboard.Widgets, newOperationOverheadWidgets(12, y, "amd64", "MarshalMap", api, namespaces, selectedSize, selectedPeriod, selectedStat, region)...)
-		y += 8
+		titleWidget, titleH := newSectionTitleWidget(0, y, md)
+		dashboard.Widgets = append(dashboard.Widgets, titleWidget)
+		y += titleH
+
+		overheadWidgets, overheadH := newOperationOverheadWidgets(0, y, "arm64", "MarshalMap", api, namespaces, selectedPeriod, selectedStat, region)
+		dashboard.Widgets = append(dashboard.Widgets, overheadWidgets...)
+		amd64OverheadWidgets, _ := newOperationOverheadWidgets(12, y, "amd64", "MarshalMap", api, namespaces, selectedPeriod, selectedStat, region)
+		dashboard.Widgets = append(dashboard.Widgets, amd64OverheadWidgets...)
+		y += overheadH
 	}
 	for _, api := range readOperations {
 		md := fmt.Sprintf(
@@ -146,11 +161,15 @@ func main() {
 				"Each SDK widget shows: API call duration (ms for v1, µs for v2), UnmarshalMap duration (µs), and AttributeValue mapping overhead %%._",
 			api, api,
 		)
-		dashboard.Widgets = append(dashboard.Widgets, newSectionTitleWidget(0, y, md))
-		y += 3
-		dashboard.Widgets = append(dashboard.Widgets, newOperationOverheadWidgets(0, y, "arm64", "UnmarshalMap", api, namespaces, selectedSize, selectedPeriod, selectedStat, region)...)
-		dashboard.Widgets = append(dashboard.Widgets, newOperationOverheadWidgets(12, y, "amd64", "UnmarshalMap", api, namespaces, selectedSize, selectedPeriod, selectedStat, region)...)
-		y += 10
+		titleWidget, titleH := newSectionTitleWidget(0, y, md)
+		dashboard.Widgets = append(dashboard.Widgets, titleWidget)
+		y += titleH
+
+		overheadWidgets, overheadH := newOperationOverheadWidgets(0, y, "arm64", "UnmarshalMap", api, namespaces, selectedPeriod, selectedStat, region)
+		dashboard.Widgets = append(dashboard.Widgets, overheadWidgets...)
+		amd64OverheadWidgets, _ := newOperationOverheadWidgets(12, y, "amd64", "UnmarshalMap", api, namespaces, selectedPeriod, selectedStat, region)
+		dashboard.Widgets = append(dashboard.Widgets, amd64OverheadWidgets...)
+		y += overheadH
 	}
 
 	b, err := json.MarshalIndent(dashboard, "", "  ")
@@ -200,8 +219,8 @@ func dashboardVariables() []DashboardVariable {
 			},
 		},
 		{
-			Type:         "property",
-			Property:     "Size",
+			Type:         "pattern",
+			Pattern:      "\\$\\{size\\}",
 			InputType:    "select",
 			ID:           "size",
 			Label:        "Size",
@@ -271,49 +290,403 @@ func resolveRegion() string {
 	return region
 }
 
-func newArchHeaderWidgets(x int, arch string, namespaces []string, size string, period int, stat string, region string) []Widget {
-	widgets := []Widget{
-		newTitleWidget(x, 0, arch),
-		newArchChartWidget(x, 2, arch, namespaces, size, period, stat, region),
-		newStatsNumberWidget(x, 10, arch, "MarshalMap", namespaces, size, period, stat, region),
-		newStatsNumberWidget(x, 13, arch, "UnmarshalMap", namespaces, size, period, stat, region),
+func resolveMetricsOS() string {
+	if v := os.Getenv("METRICS_OS"); v != "" {
+		return v
 	}
 
-	return widgets
+	return runtime.GOOS
 }
 
-func newTitleWidget(x, y int, arch string) Widget {
+// newArchHeaderWidgets builds the per-arch header section starting at y=0 and
+// returns the widgets plus the total height consumed so the caller knows where
+// the next row should start.
+func newArchHeaderWidgets(x int, arch string, namespaces []string, period int, stat string, region string) ([]Widget, int) {
+	var widgets []Widget
+	y := 0
+
+	titleWidget, titleH := newTitleWidget(x, y, arch)
+	widgets = append(widgets, titleWidget)
+	y += titleH
+
+	// Add spacing before RPS widget (1 row)
+	y += 3
+
+	chartWidget, chartH := newArchChartWidget(x, y, arch, namespaces, period, stat, region)
+	widgets = append(widgets, chartWidget)
+	y += chartH
+
+	rpsWidget, rpsH := newRPSWidget(x, y, arch, namespaces, period, region)
+	widgets = append(widgets, rpsWidget)
+	y += rpsH
+
+	cpuWidget, cpuH := newCPUUsageWidget(x, y, arch, namespaces, period, region)
+	widgets = append(widgets, cpuWidget)
+	y += cpuH
+
+	appPerfWidget, appPerfH := newAppPerformanceWidget(x, y, arch, namespaces, period, region)
+	widgets = append(widgets, appPerfWidget)
+	y += appPerfH
+
+	marshalWidget, marshalH := newStatsNumberWidget(x, y, arch, "MarshalMap", namespaces, period, stat, region)
+	widgets = append(widgets, marshalWidget)
+	y += marshalH
+
+	unmarshalWidget, unmarshalH := newStatsNumberWidget(x, y, arch, "UnmarshalMap", namespaces, period, stat, region)
+	widgets = append(widgets, unmarshalWidget)
+	y += unmarshalH
+
+	// Diagnostics widget is intentionally placed far below normal content.
+	diagWidget, _ := newDiagnosticsWidget(x, 390, arch, namespaces, period, region)
+	widgets = append(widgets, diagWidget)
+
+	return widgets, y
+}
+
+func newDiagnosticsWidget(x, y int, arch string, namespaces []string, period int, region string) (Widget, int) {
+	const h = 20
+	metrics := []any{}
+	allOps := append(append([]string{}, writeOperations...), readOperations...)
+	tableFormat := fmt.Sprintf("test_table_benchmarks_%%s_%s_${size}", arch)
+	versions := []string{"v1", "v2", "v2_codegen", "v2_ptr"}
+
+	for _, op := range allOps {
+		for _, version := range versions {
+			metrics = append(metrics, []any{
+				"AWS/DynamoDB",
+				"SuccessfulRequestLatency",
+				"TableName",
+				fmt.Sprintf(tableFormat, version),
+				"Operation",
+				op,
+				map[string]any{"label": fmt.Sprintf("%s %s", version, op)},
+			})
+		}
+	}
+
+	return Widget{
+		Type:   "metric",
+		X:      x,
+		Y:      y,
+		Width:  12,
+		Height: h,
+		Properties: MetricWidgetProperties{
+			LiveData: true,
+			Region:   region,
+			Title:    fmt.Sprintf("API Throughput (RPS) (%s, size=${size})", arch),
+			View:     "table",
+			Stacked:  false,
+			Period:   period,
+			Stat:     "SampleCount",
+			Metrics:  metrics,
+		},
+	}, h
+}
+
+func newRPSWidget(x, y int, arch string, namespaces []string, period int, region string) (Widget, int) {
+	const h = 30
+	metrics := []any{}
+	allOps := append(append([]string{}, writeOperations...), readOperations...)
+
+	idCounter := 1
+	for _, namespace := range namespaces {
+		sdk := sdkVersions[namespace]
+		sdkLabel := namespaceLabel(namespace)
+		apiRows := apiMetricRowsWithVar(namespace, "${size}", arch, sdk)
+
+		for _, op := range allOps {
+			apiMetric, ok := apiRows[op]
+			if !ok {
+				continue
+			}
+
+			hiddenID := fmt.Sprintf("m%d", idCounter)
+			idCounter++
+			metrics = append(metrics, append(apiMetric, map[string]any{
+				"id":      hiddenID,
+				"stat":    "SampleCount",
+				"visible": false,
+			}))
+
+			// Throughput per second computed from SDK-emitted API SampleCount.
+			exprID := fmt.Sprintf("r%d", idCounter)
+			idCounter++
+			metrics = append(metrics, []any{map[string]any{
+				"id":         exprID,
+				"expression": fmt.Sprintf("%[1]s/PERIOD(%[1]s)", hiddenID),
+				"label":      fmt.Sprintf("%s %s req/s", sdkLabel, op),
+			}})
+		}
+	}
+
+	return Widget{
+		Type:   "metric",
+		X:      x,
+		Y:      y,
+		Width:  12,
+		Height: h,
+		Properties: MetricWidgetProperties{
+			LiveData: true,
+			Region:   region,
+			Title:    fmt.Sprintf("API Throughput (req/s) (%s, size=${size})", arch),
+			View:     "table",
+			Stacked:  false,
+			Period:   period,
+			Stat:     "Average",
+			Metrics:  metrics,
+		},
+	}, h
+}
+
+func newCPUUsageWidget(x, y int, arch string, namespaces []string, period int, region string) (Widget, int) {
+	const h = 4
+	metrics := make([]any, 0, len(namespaces)*6)
+
+	for i, namespace := range namespaces {
+		sdk := sdkVersions[namespace]
+		sdkLabel := namespaceLabel(namespace)
+		usageID := fmt.Sprintf("cpuu%d", i)
+		idleID := fmt.Sprintf("cpui%d", i)
+		userID := fmt.Sprintf("cpus%d", i)
+		systemID := fmt.Sprintf("cpusy%d", i)
+		iowaitID := fmt.Sprintf("cpuw%d", i)
+
+		metrics = append(metrics,
+			[]any{namespace, "Client.CPU.Usage", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, map[string]any{
+				"id":      usageID,
+				"stat":    "Average",
+				"visible": false,
+			}},
+			[]any{namespace, "Client.CPU.Idle", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, map[string]any{
+				"id":      idleID,
+				"stat":    "Average",
+				"visible": false,
+			}},
+			[]any{namespace, "Client.CPU.User", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, map[string]any{
+				"id":      userID,
+				"stat":    "Average",
+				"visible": false,
+			}},
+			[]any{namespace, "Client.CPU.System", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, map[string]any{
+				"id":      systemID,
+				"stat":    "Average",
+				"visible": false,
+			}},
+			[]any{namespace, "Client.CPU.IOWait", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, map[string]any{
+				"id":      iowaitID,
+				"stat":    "Average",
+				"visible": false,
+			}},
+		)
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "cpup" + strconv.Itoa(i),
+			"expression": usageID,
+			"label":      fmt.Sprintf("%s CPU Usage %%", sdkLabel),
+		}})
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "cpuidlep" + strconv.Itoa(i),
+			"expression": idleID,
+			"label":      fmt.Sprintf("%s CPU Idle %%", sdkLabel),
+		}})
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "cpuuserp" + strconv.Itoa(i),
+			"expression": userID,
+			"label":      fmt.Sprintf("%s CPU User %%", sdkLabel),
+		}})
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "cpusystemp" + strconv.Itoa(i),
+			"expression": systemID,
+			"label":      fmt.Sprintf("%s CPU System %%", sdkLabel),
+		}})
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "cpuiowaitp" + strconv.Itoa(i),
+			"expression": iowaitID,
+			"label":      fmt.Sprintf("%s CPU IOWait %%", sdkLabel),
+		}})
+	}
+
+	return Widget{
+		Type:   "metric",
+		X:      x,
+		Y:      y,
+		Width:  12,
+		Height: h,
+		Properties: MetricWidgetProperties{
+			LiveData: true,
+			Region:   region,
+			Title:    fmt.Sprintf("Host CPU Breakdown (%%) (%s, size=${size})", arch),
+			View:     "singleValue",
+			Stacked:  false,
+			Period:   period,
+			Stat:     "Average",
+			Metrics:  metrics,
+		},
+	}, h
+}
+
+func newAppPerformanceWidget(x, y int, arch string, namespaces []string, period int, region string) (Widget, int) {
+	const h = 12
+	metrics := []any{}
+	allOps := append(append([]string{}, writeOperations...), readOperations...)
+
+	// Per-SDK hidden metric IDs, captured so we can emit visible expressions
+	// in metric-major order (all GC Overhead rows, then all GC Pause rows, etc.)
+	// matching the row ordering of the RPS widget.
+	type sdkRefs struct {
+		ns       string
+		label    string
+		gcID     string
+		paID     string
+		allocsID string
+		freesID  string
+		apiTotal string
+	}
+	refs := make([]sdkRefs, 0, len(namespaces))
+
+	for i, ns := range namespaces {
+		sdk := sdkVersions[ns]
+		sdkLabel := namespaceLabel(ns)
+		sfx := strconv.Itoa(i)
+
+		gcID := "gc" + sfx
+		paID := "pa" + sfx
+		// runtime/metrics counters: /gc/heap/allocs:objects and /gc/heap/frees:objects
+		// These are cumulative heap allocation/free counts (in objects) — the same
+		// figure Go test benchmarks aggregate to report `allocs/op`.
+		allocsID := "alc" + sfx
+		freesID := "fre" + sfx
+
+		// Hidden raw runtime metrics (per SDK).
+		metrics = append(metrics,
+			[]any{ns, "Memory.GCCPUFraction", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk,
+				map[string]any{"id": gcID, "stat": "Average", "visible": false}},
+			[]any{ns, "Memory.PauseUs", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk,
+				map[string]any{"id": paID, "stat": "Average", "visible": false}},
+			[]any{ns, "gc.heap.allocs.objects", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk,
+				map[string]any{"id": allocsID, "stat": "Maximum", "visible": false}},
+			[]any{ns, "gc.heap.frees.objects", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk,
+				map[string]any{"id": freesID, "stat": "Maximum", "visible": false}},
+		)
+
+		// Hidden API SampleCount metrics — used to normalize allocs/frees by total API
+		// operations performed in the window, giving a Go-benchmark-style allocs/op figure.
+		// v1 emits per-operation metrics (metric name == operation); v2 uses
+		// client.call.duration with the rpc.method dimension.
+		var apiSumTerms []string
+		for j, op := range allOps {
+			apiID := fmt.Sprintf("api%s_%d", sfx, j)
+			var row []any
+			if ns == "Benchmark/GoSDKv1" {
+				row = []any{ns, op, "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk,
+					map[string]any{"id": apiID, "stat": "SampleCount", "visible": false}}
+			} else {
+				row = []any{ns, "client.call.duration", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, "rpc.method", op,
+					map[string]any{"id": apiID, "stat": "SampleCount", "visible": false}}
+			}
+			metrics = append(metrics, row)
+			apiSumTerms = append(apiSumTerms, fmt.Sprintf("SUM(%s)", apiID))
+		}
+
+		refs = append(refs, sdkRefs{
+			ns:       ns,
+			label:    sdkLabel,
+			gcID:     gcID,
+			paID:     paID,
+			allocsID: allocsID,
+			freesID:  freesID,
+			apiTotal: strings.Join(apiSumTerms, "+"),
+		})
+	}
+
+	// Visible derived expressions, grouped by metric (then by SDK), so the table
+	// reads: all GC Overhead rows, all GC Pause rows, all Allocs/op rows, all Frees/op rows.
+	for i, r := range refs {
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "gcpct" + strconv.Itoa(i),
+			"expression": fmt.Sprintf("%s*100", r.gcID),
+			"label":      fmt.Sprintf("GC Overhead %% %s", r.label),
+		}})
+	}
+	for i, r := range refs {
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "pauseus" + strconv.Itoa(i),
+			"expression": fmt.Sprintf("%s*1", r.paID),
+			"label":      fmt.Sprintf("GC Pause Duration (µs) %s", r.label),
+		}})
+	}
+	for i, r := range refs {
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "alcop" + strconv.Itoa(i),
+			"expression": fmt.Sprintf("TIME_SERIES((MAX(%s)-MIN(%s))/(%s))", r.allocsID, r.allocsID, r.apiTotal),
+			"label":      fmt.Sprintf("Allocs/op %s", r.label),
+		}})
+	}
+	for i, r := range refs {
+		metrics = append(metrics, []any{map[string]any{
+			"id":         "freop" + strconv.Itoa(i),
+			"expression": fmt.Sprintf("TIME_SERIES((MAX(%s)-MIN(%s))/(%s))", r.freesID, r.freesID, r.apiTotal),
+			"label":      fmt.Sprintf("Frees/op %s", r.label),
+		}})
+	}
+
+	return Widget{
+		Type:   "metric",
+		X:      x,
+		Y:      y,
+		Width:  12,
+		Height: h,
+		Properties: MetricWidgetProperties{
+			LiveData: true,
+			Region:   region,
+			Title:    fmt.Sprintf("App Runtime Performance (%s, size=${size})", arch),
+			View:     "table",
+			Stacked:  false,
+			Period:   period,
+			Stat:     "Average",
+			Metrics:  metrics,
+		},
+	}, h
+}
+
+func runtimeMetricRow(namespace, metricName, arch, sdk string) []any {
+	return []any{namespace, metricName, "SDK", sdk, "Size", "${size}", "OS", metricsOS, "Arch", arch}
+}
+
+func newTitleWidget(x, y int, arch string) (Widget, int) {
+	const h = 2
 	return Widget{
 		Type:   "text",
 		X:      x,
 		Y:      y,
 		Width:  12,
-		Height: 2,
+		Height: h,
 		Properties: TextWidgetProperties{
 			Markdown: fmt.Sprintf("## %s", arch),
 		},
-	}
+	}, h
 }
 
-func newSectionTitleWidget(x, y int, markdown string) Widget {
+func newSectionTitleWidget(x, y int, markdown string) (Widget, int) {
+	const h = 3
 	return Widget{
 		Type:   "text",
 		X:      x,
 		Y:      y,
 		Width:  24,
-		Height: 3,
+		Height: h,
 		Properties: TextWidgetProperties{
 			Markdown: markdown,
 		},
-	}
+	}, h
 }
 
-func newArchChartWidget(x, y int, arch string, namespaces []string, size string, period int, stat string, region string) Widget {
+func newArchChartWidget(x, y int, arch string, namespaces []string, period int, stat string, region string) (Widget, int) {
+	const h = 8
 	metrics := make([]any, 0, len(namespaces)*2)
 
 	for _, namespace := range namespaces {
 		sdk := sdkVersions[namespace]
-		metrics = append(metrics, []any{namespace, "MarshalMap", "OS", "linux", "Size", size, "Arch", arch, "SDK", sdk})
+		metrics = append(metrics, []any{namespace, "MarshalMap", "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk})
 		metrics = append(metrics, []any{".", "UnmarshalMap", ".", ".", ".", ".", ".", ".", ".", "."})
 	}
 
@@ -322,26 +695,27 @@ func newArchChartWidget(x, y int, arch string, namespaces []string, size string,
 		X:      x,
 		Y:      y,
 		Width:  12,
-		Height: 8,
+		Height: h,
 		Properties: MetricWidgetProperties{
 			LiveData: true,
 			Region:   region,
-			Title:    fmt.Sprintf("AttributeValue (%s)", arch),
+			Title:    fmt.Sprintf("AttributeValue (%s, size=${size})", arch),
 			View:     "timeSeries",
 			Stacked:  false,
 			Period:   period,
 			Stat:     stat,
 			Metrics:  metrics,
 		},
-	}
+	}, h
 }
 
-func newStatsNumberWidget(x, y int, arch, operation string, namespaces []string, size string, period int, stat string, region string) Widget {
+func newStatsNumberWidget(x, y int, arch, operation string, namespaces []string, period int, stat string, region string) (Widget, int) {
+	const h = 3
 	metrics := make([]any, 0, len(namespaces))
 
 	for _, namespace := range namespaces {
 		sdk := sdkVersions[namespace]
-		base := []any{namespace, operation, "OS", "linux", "Size", size, "Arch", arch, "SDK", sdk}
+		base := []any{namespace, operation, "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk}
 		metrics = append(metrics, append(append([]any{}, base...), map[string]any{
 			"label": namespaceLabel(namespace),
 		}))
@@ -352,11 +726,11 @@ func newStatsNumberWidget(x, y int, arch, operation string, namespaces []string,
 		X:      x,
 		Y:      y,
 		Width:  12,
-		Height: 3,
+		Height: h,
 		Properties: MetricWidgetProperties{
 			LiveData:  true,
 			Region:    region,
-			Title:     fmt.Sprintf("%s stats (%s)", operation, arch),
+			Title:     fmt.Sprintf("%s stats (%s, size=${size})", operation, arch),
 			View:      "singleValue",
 			Stacked:   false,
 			Period:    period,
@@ -364,12 +738,12 @@ func newStatsNumberWidget(x, y int, arch, operation string, namespaces []string,
 			Metrics:   metrics,
 			Sparkline: true,
 		},
-	}
+	}, h
 }
 
-// newOperationOverheadWidgets returns one widget per SDK (2×2 grid, each 6 wide × 5 tall)
-// so every widget has only 3 metrics and labels are never truncated.
-func newOperationOverheadWidgets(x, y int, arch, serializationMetric, api string, namespaces []string, size string, period int, stat string, region string) []Widget {
+// newOperationOverheadWidgets returns one widget per SDK arranged in a 2×2 grid.
+// Returns the widgets and the total height of the grid (2 rows × rowH).
+func newOperationOverheadWidgets(x, y int, arch, serializationMetric, api string, namespaces []string, period int, stat string, region string) ([]Widget, int) {
 	const colW = 6
 	const rowH = 4
 
@@ -380,15 +754,15 @@ func newOperationOverheadWidgets(x, y int, arch, serializationMetric, api string
 		sdkLabel := namespaceLabel(namespace)
 		apiDurationScale := apiDurationScaleForNamespace(namespace)
 		apiUnitLabel := apiDurationUnitForNamespace(namespace)
-		apiRows := apiMetricRows(namespace, size, arch, sdk)
+		apiRows := apiMetricRowsWithVar(namespace, "${size}", arch, sdk)
 
 		apiMetric, ok := apiRows[api]
 		if !ok {
 			continue
 		}
 
-		col := i % 2 // 0 or 1
-		row := i / 2 // 0 or 1
+		col := i % 2
+		row := i / 2
 		wx := x + col*colW
 		wy := y + row*rowH
 
@@ -401,7 +775,7 @@ func newOperationOverheadWidgets(x, y int, arch, serializationMetric, api string
 				"id":    apiID,
 				"label": fmt.Sprintf("%s duration (%s)", api, apiUnitLabel),
 			}),
-			[]any{namespace, serializationMetric, "OS", "linux", "Size", size, "Arch", arch, "SDK", sdk, map[string]any{
+			[]any{namespace, serializationMetric, "OS", metricsOS, "Size", "${size}", "Arch", arch, "SDK", sdk, map[string]any{
 				"id":    serID,
 				"label": fmt.Sprintf("%s duration (µs)", serializationMetric),
 			}},
@@ -421,7 +795,7 @@ func newOperationOverheadWidgets(x, y int, arch, serializationMetric, api string
 			Properties: MetricWidgetProperties{
 				LiveData:  true,
 				Region:    region,
-				Title:     fmt.Sprintf("%s — AttributeValue %s for %s (%s)", sdkLabel, serializationMetric, api, arch),
+				Title:     fmt.Sprintf("%s — AttributeValue %s for %s (%s, size=${size})", sdkLabel, serializationMetric, api, arch),
 				View:      "singleValue",
 				Stacked:   false,
 				Period:    period,
@@ -432,7 +806,9 @@ func newOperationOverheadWidgets(x, y int, arch, serializationMetric, api string
 		})
 	}
 
-	return widgets
+	// 4 namespaces → 2 rows
+	totalRows := (len(namespaces) + 1) / 2
+	return widgets, totalRows * rowH
 }
 
 func namespaceLabel(namespace string) string {
@@ -445,11 +821,9 @@ func namespaceLabel(namespace string) string {
 
 func apiDurationScaleForNamespace(namespace string) int {
 	if namespace == "Benchmark/GoSDKv1" {
-		// v1 API latency is in milliseconds while Marshal/Unmarshal are in microseconds.
 		return 1000
 	}
 
-	// v2 client.call.duration is emitted in microseconds in this project.
 	return 1
 }
 
@@ -461,18 +835,19 @@ func apiDurationUnitForNamespace(namespace string) string {
 	return "µs"
 }
 
-func apiMetricRows(namespace, size, arch, sdk string) map[string][]any {
+func apiMetricRowsWithVar(namespace, sizeVar, arch, sdk string) map[string][]any {
 	rows := map[string][]any{}
 
 	var metrics []util.Metric
 	if namespace == "Benchmark/GoSDKv1" {
-		metrics = util.AllMetricsV1(namespace, sdk, size, "linux", arch, "m", nil)
+		// Use a dummy size for reflection; actual dimension will use variable
+		metrics = util.AllMetricsV1(namespace, sdk, "1KB", metricsOS, arch, "m", nil)
 	} else {
-		metrics = util.AllMetricsV2(namespace, sdk, size, "linux", arch, "m", nil)
+		metrics = util.AllMetricsV2(namespace, sdk, "1KB", metricsOS, arch, "m", nil)
 	}
 
 	for _, m := range metrics {
-		row := metricRowNoExtras(m)
+		row := metricRowWithVar(m, sizeVar)
 		op := m.Name
 		if v, ok := m.Dimensions[util.DimensionRpcMethod]; ok {
 			op = v
@@ -483,15 +858,16 @@ func apiMetricRows(namespace, size, arch, sdk string) map[string][]any {
 	return rows
 }
 
-func metricRowNoExtras(m util.Metric) []any {
+func metricRowWithVar(m util.Metric, sizeVar string) []any {
 	row := []any{m.Namespace, m.Name}
 
 	// Keep a stable and valid dimension order for CloudWatch metric arrays.
 	if v, ok := m.Dimensions[util.DimensionNameSDK]; ok {
 		row = append(row, util.DimensionNameSDK, v)
 	}
-	if v, ok := m.Dimensions[util.DimensionNameSize]; ok {
-		row = append(row, util.DimensionNameSize, v)
+	if _, ok := m.Dimensions[util.DimensionNameSize]; ok {
+		// Use variable instead of hardcoded size
+		row = append(row, util.DimensionNameSize, sizeVar)
 	}
 	if v, ok := m.Dimensions[util.DimensionNameOS]; ok {
 		row = append(row, util.DimensionNameOS, v)

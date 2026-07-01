@@ -97,6 +97,7 @@ type Event struct {
 	// custom
 	StandardUnit *string     `json:"StandardUnit,omitempty"`
 	Dimensions   []Dimension `json:"Dimensions,omitempty"`
+	RawValue     *float64    `json:"RawValue,omitempty"`
 }
 
 type Dimension struct {

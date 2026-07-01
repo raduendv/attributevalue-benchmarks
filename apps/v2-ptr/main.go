@@ -16,13 +16,15 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go/metrics"
 )
 
-const TableName = "test_table_benchmarks_v2_ptr_" + runtime.GOARCH
+const TableNameFormat = "test_table_benchmarks_v2_ptr_%s_%s"
 const CloudWatchNamespace = "Benchmark/GoSDKv2Ptr"
 const BatchGetLimit = 25
 const BatchWriteLimit = 25
@@ -30,6 +32,14 @@ const TransactGetLimit = 100
 const TransactWriteLimit = 100
 
 var r *rav.Rav[model.User]
+
+func tableName() string {
+	return fmt.Sprintf(
+		TableNameFormat,
+		runtime.GOARCH,
+		util.Env("SIZE", "1KB"),
+	)
+}
 
 func init() {
 	var err error
@@ -73,8 +83,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGHUP)
 	defer stop()
 
-	sess := awsSession()
-	cw := cloudwatchService(sess)
+	ddbCfg := awsSession(util.Env("AWS_ENDPOINT_URL_DYNAMODB", util.Env("AWS_ENDPOINT_URL", "")))
+	cwCfg := awsSession("")
+	cw := cloudwatchService(cwCfg)
 
 	sender := &util.CloudWatchSender[cloudwatch.PutMetricDataInput, cloudwatch.PutMetricDataOutput]{
 		Namespace: CloudWatchNamespace,
@@ -91,7 +102,9 @@ func main() {
 		},
 	}
 
-	ddb := dynamoDBService(sess, sender)
+	ddb := dynamoDBService(ddbCfg, sender)
+
+	emitRunMarker(cw, size, "start")
 
 	wg := &sync.WaitGroup{}
 
@@ -105,6 +118,33 @@ func main() {
 	wg.Add(1)
 	go mainDynamoDB(ctx, wg, ddb, sender, stop, size)
 	wg.Wait()
+
+	emitRunMarker(cw, size, "end")
+}
+
+// emitRunMarker writes a single RunMarker datapoint into this app's CloudWatch
+// namespace to bracket a benchmark run (Phase=start|end). cloudwatch-aggregate
+// uses these markers to pin the exact window of each run and auto-derive the
+// idle gap between runs.
+func emitRunMarker(cw *cloudwatch.Client, size util.Size, phase string) {
+	_, err := cw.PutMetricData(context.Background(), &cloudwatch.PutMetricDataInput{
+		Namespace: aws.String(CloudWatchNamespace),
+		MetricData: []cwtypes.MetricDatum{
+			{
+				MetricName: aws.String("RunMarker"),
+				Value:      aws.Float64(1),
+				Timestamp:  aws.Time(time.Now()),
+				Dimensions: []cwtypes.Dimension{
+					{Name: aws.String("Size"), Value: aws.String(string(size))},
+					{Name: aws.String("Arch"), Value: aws.String(runtime.GOARCH)},
+					{Name: aws.String("Phase"), Value: aws.String(phase)},
+				},
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("emitRunMarker(%s): %v", phase, err)
+	}
 }
 
 func mainCSMServer(ctx context.Context, wg *sync.WaitGroup, sender *util.CloudWatchSender[cloudwatch.PutMetricDataInput, cloudwatch.PutMetricDataOutput]) {
@@ -196,7 +236,7 @@ func runPut(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Client
 			Value: fmt.Sprintf("ID:%d", l),
 		}
 		_, err = ddb.PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			Item:      userMap,
 		})
 
@@ -218,7 +258,7 @@ func runRead(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Clien
 		}
 
 		res, err := ddb.GetItem(ctx, &dynamodb.GetItemInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			Key: map[string]types.AttributeValue{
 				"id": &types.AttributeValueMemberS{
 					Value: fmt.Sprintf("ID:%d", l),
@@ -250,7 +290,7 @@ func runQuery(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Clie
 			}
 
 			res, err := ddb.Query(ctx, &dynamodb.QueryInput{
-				TableName:              aws.String(TableName),
+				TableName:              aws.String(tableName()),
 				KeyConditionExpression: aws.String("id = :id"),
 				ExpressionAttributeValues: map[string]types.AttributeValue{
 					":id": &types.AttributeValueMemberS{
@@ -292,7 +332,7 @@ func runScan(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Clien
 		}
 
 		res, err := ddb.Scan(ctx, &dynamodb.ScanInput{
-			TableName:        aws.String(TableName),
+			TableName:        aws.String(tableName()),
 			Limit:            aws.Int32(int32(limit)),
 			FilterExpression: aws.String("begins_with(#name, :prefix)"),
 			ExpressionAttributeNames: map[string]string{
@@ -340,7 +380,7 @@ func runUpdate(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Cli
 		}
 
 		userRes, err := ddb.GetItem(ctx, &dynamodb.GetItemInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			Key: map[string]types.AttributeValue{
 				"id": &types.AttributeValueMemberS{
 					Value: fmt.Sprintf("ID:%d", l),
@@ -372,7 +412,7 @@ func runUpdate(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Cli
 			Value: fmt.Sprintf("ID:%d", l),
 		}
 		_, err = ddb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			Key: map[string]types.AttributeValue{
 				"id": &types.AttributeValueMemberS{
 					Value: fmt.Sprintf("ID:%d", l),
@@ -410,7 +450,7 @@ func runDelete(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Cli
 		}
 
 		userMap, err := ddb.GetItem(ctx, &dynamodb.GetItemInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			Key: map[string]types.AttributeValue{
 				"id": &types.AttributeValueMemberS{
 					Value: fmt.Sprintf("ID:%d", l),
@@ -431,7 +471,7 @@ func runDelete(ctx context.Context, size util.Size, limit int, ddb *dynamodb.Cli
 		log.Printf("deleting user %d: %+v", l, user)
 
 		_, err = ddb.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			Key: map[string]types.AttributeValue{
 				"id": &types.AttributeValueMemberS{
 					Value: user.ID.ID,
@@ -457,7 +497,7 @@ func runBatchWrite(ctx context.Context, size util.Size, limit int, ddb *dynamodb
 
 	batchWrite := &dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]types.WriteRequest{
-			TableName: {},
+			tableName(): {},
 		},
 	}
 
@@ -466,7 +506,7 @@ func runBatchWrite(ctx context.Context, size util.Size, limit int, ddb *dynamodb
 			return
 		}
 
-		for len(users) > 0 && len(batchWrite.RequestItems[TableName]) < BatchWriteLimit {
+		for len(users) > 0 && len(batchWrite.RequestItems[tableName()]) < BatchWriteLimit {
 			user := users[0]
 			users = users[1:]
 
@@ -476,7 +516,7 @@ func runBatchWrite(ctx context.Context, size util.Size, limit int, ddb *dynamodb
 				continue
 			}
 
-			batchWrite.RequestItems[TableName] = append(batchWrite.RequestItems[TableName], types.WriteRequest{
+			batchWrite.RequestItems[tableName()] = append(batchWrite.RequestItems[tableName()], types.WriteRequest{
 				PutRequest: &types.PutRequest{
 					Item: userMap,
 				},
@@ -487,12 +527,12 @@ func runBatchWrite(ctx context.Context, size util.Size, limit int, ddb *dynamodb
 		if err != nil {
 			log.Printf("runBatchWrite(): batch write items: %v", err)
 		}
-		batchWrite.RequestItems[TableName] = batchWrite.RequestItems[TableName][0:0]
+		batchWrite.RequestItems[tableName()] = batchWrite.RequestItems[tableName()][0:0]
 
-		if len(res.UnprocessedItems) > 0 && len(res.UnprocessedItems[TableName]) > 0 {
-			for _, req := range res.UnprocessedItems[TableName] {
+		if len(res.UnprocessedItems) > 0 && len(res.UnprocessedItems[tableName()]) > 0 {
+			for _, req := range res.UnprocessedItems[tableName()] {
 				if req.PutRequest != nil {
-					batchWrite.RequestItems[TableName] = append(batchWrite.RequestItems[TableName], types.WriteRequest{
+					batchWrite.RequestItems[tableName()] = append(batchWrite.RequestItems[tableName()], types.WriteRequest{
 						PutRequest: req.PutRequest,
 					})
 				}
@@ -513,7 +553,7 @@ func runBatchRead(ctx context.Context, size util.Size, limit int, ddb *dynamodb.
 
 	batchGet := &dynamodb.BatchGetItemInput{
 		RequestItems: map[string]types.KeysAndAttributes{
-			TableName: types.KeysAndAttributes{
+			tableName(): types.KeysAndAttributes{
 				Keys: []map[string]types.AttributeValue{},
 			},
 		},
@@ -524,10 +564,10 @@ func runBatchRead(ctx context.Context, size util.Size, limit int, ddb *dynamodb.
 			return
 		}
 
-		for len(batchGet.RequestItems[TableName].Keys) < BatchGetLimit {
-			kaa := batchGet.RequestItems[TableName]
-			kaa.Keys = append(batchGet.RequestItems[TableName].Keys, keysToGet[0])
-			batchGet.RequestItems[TableName] = kaa
+		for len(batchGet.RequestItems[tableName()].Keys) < BatchGetLimit {
+			kaa := batchGet.RequestItems[tableName()]
+			kaa.Keys = append(batchGet.RequestItems[tableName()].Keys, keysToGet[0])
+			batchGet.RequestItems[tableName()] = kaa
 
 			keysToGet = keysToGet[1:]
 			if len(keysToGet) == 0 {
@@ -539,11 +579,11 @@ func runBatchRead(ctx context.Context, size util.Size, limit int, ddb *dynamodb.
 		if err != nil {
 			log.Printf("runBatchRead(): batch get items: %v", err)
 		}
-		kaa := batchGet.RequestItems[TableName]
-		kaa.Keys = batchGet.RequestItems[TableName].Keys[0:0]
-		batchGet.RequestItems[TableName] = kaa
+		kaa := batchGet.RequestItems[tableName()]
+		kaa.Keys = batchGet.RequestItems[tableName()].Keys[0:0]
+		batchGet.RequestItems[tableName()] = kaa
 
-		for _, item := range res.Responses[TableName] {
+		for _, item := range res.Responses[tableName()] {
 			user, err := util.UnmarshalWithMetrics[model.User](ctx, item, sender, unmarshal)
 			if err != nil {
 				log.Printf("runBatchRead(): unmarshal item: %v", err)
@@ -553,8 +593,8 @@ func runBatchRead(ctx context.Context, size util.Size, limit int, ddb *dynamodb.
 			log.Printf("batch read user %s", user.ID)
 		}
 
-		if len(res.UnprocessedKeys) > 0 && len(res.UnprocessedKeys[TableName].Keys) > 0 {
-			for _, key := range res.UnprocessedKeys[TableName].Keys {
+		if len(res.UnprocessedKeys) > 0 && len(res.UnprocessedKeys[tableName()].Keys) > 0 {
+			for _, key := range res.UnprocessedKeys[tableName()].Keys {
 				keysToGet = append(keysToGet, key)
 			}
 		}
@@ -575,17 +615,17 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 
 	batchGet := &dynamodb.BatchGetItemInput{
 		RequestItems: map[string]types.KeysAndAttributes{
-			TableName: types.KeysAndAttributes{
+			tableName(): types.KeysAndAttributes{
 				Keys: []map[string]types.AttributeValue{},
 			},
 		},
 	}
 
 	for len(keysToGet) > 0 {
-		for len(keysToGet) > 0 && len(batchGet.RequestItems[TableName].Keys) < BatchWriteLimit {
-			kaa := batchGet.RequestItems[TableName]
-			kaa.Keys = append(batchGet.RequestItems[TableName].Keys, keysToGet[0])
-			batchGet.RequestItems[TableName] = kaa
+		for len(keysToGet) > 0 && len(batchGet.RequestItems[tableName()].Keys) < BatchWriteLimit {
+			kaa := batchGet.RequestItems[tableName()]
+			kaa.Keys = append(batchGet.RequestItems[tableName()].Keys, keysToGet[0])
+			batchGet.RequestItems[tableName()] = kaa
 
 			keysToGet = keysToGet[1:]
 		}
@@ -594,11 +634,11 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 		if err != nil {
 			log.Printf("runBatchRead(): batch get items: %v", err)
 		}
-		kaa := batchGet.RequestItems[TableName]
-		kaa.Keys = batchGet.RequestItems[TableName].Keys[0:0]
-		batchGet.RequestItems[TableName] = kaa
+		kaa := batchGet.RequestItems[tableName()]
+		kaa.Keys = batchGet.RequestItems[tableName()].Keys[0:0]
+		batchGet.RequestItems[tableName()] = kaa
 
-		for _, item := range res.Responses[TableName] {
+		for _, item := range res.Responses[tableName()] {
 			user, err := util.UnmarshalWithMetrics[model.User](ctx, item, sender, unmarshal)
 			if err != nil {
 				log.Printf("runBatchRead(): unmarshal item: %v", err)
@@ -610,8 +650,8 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 			log.Printf("batch read user %s", user.ID)
 		}
 
-		if len(res.UnprocessedKeys) > 0 && len(res.UnprocessedKeys[TableName].Keys) > 0 {
-			for _, key := range res.UnprocessedKeys[TableName].Keys {
+		if len(res.UnprocessedKeys) > 0 && len(res.UnprocessedKeys[tableName()].Keys) > 0 {
+			for _, key := range res.UnprocessedKeys[tableName()].Keys {
 				keysToGet = append(keysToGet, key)
 			}
 		}
@@ -623,7 +663,7 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 
 	batchWrite := &dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]types.WriteRequest{
-			TableName: {},
+			tableName(): {},
 		},
 	}
 
@@ -632,7 +672,7 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 			return
 		}
 
-		for len(users) > 0 && len(batchWrite.RequestItems[TableName]) < BatchWriteLimit {
+		for len(users) > 0 && len(batchWrite.RequestItems[tableName()]) < BatchWriteLimit {
 			if shouldExit(ctx, "runBatchDelete") {
 				return
 			}
@@ -646,7 +686,7 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 				continue
 			}
 
-			batchWrite.RequestItems[TableName] = append(batchWrite.RequestItems[TableName], types.WriteRequest{
+			batchWrite.RequestItems[tableName()] = append(batchWrite.RequestItems[tableName()], types.WriteRequest{
 				DeleteRequest: &types.DeleteRequest{
 					Key: map[string]types.AttributeValue{
 						"id": userMap["id"],
@@ -659,12 +699,12 @@ func runBatchDelete(ctx context.Context, size util.Size, limit int, ddb *dynamod
 		if err != nil {
 			log.Printf("runBatchDelete(): batch write items: %v", err)
 		}
-		batchWrite.RequestItems[TableName] = batchWrite.RequestItems[TableName][0:0]
+		batchWrite.RequestItems[tableName()] = batchWrite.RequestItems[tableName()][0:0]
 
-		if len(res.UnprocessedItems) > 0 && len(res.UnprocessedItems[TableName]) > 0 {
-			for _, req := range res.UnprocessedItems[TableName] {
+		if len(res.UnprocessedItems) > 0 && len(res.UnprocessedItems[tableName()]) > 0 {
+			for _, req := range res.UnprocessedItems[tableName()] {
 				if req.DeleteRequest != nil {
-					batchWrite.RequestItems[TableName] = append(batchWrite.RequestItems[TableName], types.WriteRequest{
+					batchWrite.RequestItems[tableName()] = append(batchWrite.RequestItems[tableName()], types.WriteRequest{
 						DeleteRequest: req.DeleteRequest,
 					})
 				}
@@ -691,7 +731,7 @@ func runTransactPut(ctx context.Context, size util.Size, limit int, ddb *dynamod
 
 		transactItems = append(transactItems, types.TransactWriteItem{
 			Put: &types.Put{
-				TableName: aws.String(TableName),
+				TableName: aws.String(tableName()),
 				Item:      userMap,
 			},
 		})
@@ -746,7 +786,7 @@ func runTransactGet(ctx context.Context, size util.Size, limit int, ddb *dynamod
 				for _, key := range batch {
 					out = append(out, types.TransactGetItem{
 						Get: &types.Get{
-							TableName: aws.String(TableName),
+							TableName: aws.String(tableName()),
 							Key:       key,
 						},
 					})
@@ -798,7 +838,7 @@ func runTransactUpdate(ctx context.Context, size util.Size, limit int, ddb *dyna
 				for _, key := range batch {
 					out = append(out, types.TransactGetItem{
 						Get: &types.Get{
-							TableName: aws.String(TableName),
+							TableName: aws.String(tableName()),
 							Key:       key,
 						},
 					})
@@ -831,7 +871,7 @@ func runTransactUpdate(ctx context.Context, size util.Size, limit int, ddb *dyna
 
 			transactItems = append(transactItems, types.TransactWriteItem{
 				Update: &types.Update{
-					TableName: aws.String(TableName),
+					TableName: aws.String(tableName()),
 					Key: map[string]types.AttributeValue{
 						"id": userMap["id"],
 					},
@@ -901,7 +941,7 @@ func runTransactDelete(ctx context.Context, size util.Size, limit int, ddb *dyna
 				for _, key := range batch {
 					out = append(out, types.TransactGetItem{
 						Get: &types.Get{
-							TableName: aws.String(TableName),
+							TableName: aws.String(tableName()),
 							Key:       key,
 						},
 					})
@@ -930,7 +970,7 @@ func runTransactDelete(ctx context.Context, size util.Size, limit int, ddb *dyna
 
 			transactItems = append(transactItems, types.TransactWriteItem{
 				Delete: &types.Delete{
-					TableName: aws.String(TableName),
+					TableName: aws.String(tableName()),
 					Key: map[string]types.AttributeValue{
 						"id": userMap["id"],
 					},
@@ -983,12 +1023,12 @@ func dynamoDBService(cfg aws.Config, mp metrics.MeterProvider) *dynamodb.Client 
 
 func ensureTable(ddb *dynamodb.Client) {
 	desc, err := ddb.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
-		TableName: aws.String(TableName),
+		TableName: aws.String(tableName()),
 	})
 
 	if desc == nil || desc.Table == nil {
 		_, err = ddb.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 			AttributeDefinitions: []types.AttributeDefinition{
 				{
 					AttributeName: aws.String("id"),
@@ -1009,7 +1049,7 @@ func ensureTable(ddb *dynamodb.Client) {
 		}
 
 		err = dynamodb.NewTableExistsWaiter(ddb).Wait(context.Background(), &dynamodb.DescribeTableInput{
-			TableName: aws.String(TableName),
+			TableName: aws.String(tableName()),
 		}, 5*time.Minute)
 		if err != nil {
 			panic(err)
@@ -1019,11 +1059,19 @@ func ensureTable(ddb *dynamodb.Client) {
 	}
 }
 
-func awsSession() aws.Config {
-	cfg, err := config.LoadDefaultConfig(
-		context.Background(),
+func awsSession(dynamoDBEndpoint string) aws.Config {
+	options := []func(*config.LoadOptions) error{
 		config.WithRegion(util.Env("AWS_REGION", "eu-west-1")),
-	)
+	}
+
+	if dynamoDBEndpoint != "" {
+		options = append(options,
+			config.WithBaseEndpoint(dynamoDBEndpoint),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "test")),
+		)
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.Background(), options...)
 
 	if err != nil {
 		panic(err)
